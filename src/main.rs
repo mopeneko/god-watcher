@@ -1,6 +1,6 @@
 use std::env;
 use std::str::FromStr;
-use std::{collections::LinkedList, time::Duration};
+use std::time::Duration;
 
 use ethers::types::H160;
 use hyperliquid_rust_sdk::{BaseUrl, InfoClient, Message, Subscription};
@@ -63,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
     let (sender, mut receiver) = unbounded_channel();
 
     let mut subscribed_users: Vec<H160> = Vec::new();
-    let mut subscription_ids: LinkedList<u32> = LinkedList::new();
+    let mut subscription_ids: Vec<u32> = Vec::new();
     for address in addresses {
         let user = H160::from_str(address.as_str())?;
         let res = info_client
@@ -72,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
         match res {
             Ok(u32) => {
                 subscribed_users.push(user);
-                subscription_ids.push_back(u32);
+                subscription_ids.push(u32);
             }
             Err(e) => warn!("failed to subscribe: {e:?}"),
         }
@@ -83,23 +83,33 @@ async fn main() -> anyhow::Result<()> {
             sleep(Duration::from_secs(30)).await;
 
             info!("Resubscribing...");
+
+            let mut failed_subscription_ids: Vec<u32> = Vec::new();
+            let mut new_subscription_ids: Vec<u32> = Vec::new();
             for (i, subscription_id) in subscription_ids.iter().enumerate() {
                 if info_client.unsubscribe(*subscription_id).await.is_err() {
+                    warn!("failed to unsubscribe {subscription_id:?}");
+                    failed_subscription_ids.push(*subscription_id);
                     continue;
                 }
-                if info_client
+                let res = info_client
                     .subscribe(
                         Subscription::UserEvents {
                             user: *subscribed_users.get(i).unwrap(),
                         },
                         sender.clone(),
                     )
-                    .await
-                    .is_err()
-                {
+                    .await;
+                if res.is_err() {
+                    warn!("failed to subscribe {subscription_id:?}");
+                    failed_subscription_ids.push(*subscription_id);
                     continue;
                 }
+                new_subscription_ids.push(res.unwrap())
             }
+            new_subscription_ids.append(&mut failed_subscription_ids);
+            new_subscription_ids.dedup();
+            subscription_ids = new_subscription_ids;
         }
     });
 
