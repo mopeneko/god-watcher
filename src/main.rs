@@ -89,29 +89,32 @@ async fn main() -> anyhow::Result<()> {
             let mut failed_subscription_ids: Vec<u32> = Vec::new();
             let mut new_subscription_ids: Vec<u32> = Vec::new();
             for (i, subscription_id) in subscription_ids.iter().enumerate() {
-                if info_client.unsubscribe(*subscription_id).await.is_err() {
-                    warn!("failed to unsubscribe {subscription_id:?}");
-                    failed_subscription_ids.push(*subscription_id);
-                    continue;
-                }
+                match info_client.unsubscribe(*subscription_id).await {
+                    Ok(()) => {
+                        match subscribed_users.get(i) {
+                            Some(user) => {
+                                let subscribe_res = info_client
+                                    .subscribe(Subscription::UserEvents { user: *user }, sender.clone())
+                                    .await;
+                                if subscribe_res.is_err() {
+                                    warn!("failed to subscribe {subscription_id:?}");
+                                    failed_subscription_ids.push(*subscription_id);
+                                    continue;
+                                }
 
-                let get_user_opt = subscribed_users.get(i);
-                if get_user_opt.is_none() {
-                    continue;
+                                new_subscription_ids.push(subscribe_res.unwrap())
+                            },
+                            None => continue,
+                        }
+                    },
+                    Err(err) => {
+                        warn!("failed to unsubscribe {subscription_id:?}: {err:?}");
+                        failed_subscription_ids.push(*subscription_id);
+                        continue;
+                    }
                 }
-                let user = get_user_opt.unwrap();
-
-                let subscribe_res = info_client
-                    .subscribe(Subscription::UserEvents { user: *user }, sender.clone())
-                    .await;
-                if subscribe_res.is_err() {
-                    warn!("failed to subscribe {subscription_id:?}");
-                    failed_subscription_ids.push(*subscription_id);
-                    continue;
-                }
-
-                new_subscription_ids.push(subscribe_res.unwrap())
             }
+
             new_subscription_ids.append(&mut failed_subscription_ids);
             new_subscription_ids.dedup();
             subscription_ids = new_subscription_ids;
@@ -145,21 +148,22 @@ async fn main() -> anyhow::Result<()> {
                 continue;
             }
 
-            let send_res = client
+            match client
                 .post(&discord_webhook_url)
                 .json(&json!({"content":message}))
                 .send()
-                .await;
-            if send_res.is_err() {
-                let err = send_res.err().unwrap();
-                warn!("failed to send to webhook: {err:?}");
-                continue;
-            }
-
-            let res = send_res.unwrap();
-            let status_code = res.status();
-            if res.error_for_status().is_err() {
-                warn!("unexpected status code: {status_code:?}")
+                .await
+            {
+                Ok(res) => {
+                    let status_code = res.status();
+                    if res.error_for_status().is_err() {
+                        warn!("unexpected status code: {status_code:?}")
+                    }
+                },
+                Err(err) => {
+                    warn!("failed to send to webhook: {err:?}");
+                    continue;
+                }
             }
         }
     });
