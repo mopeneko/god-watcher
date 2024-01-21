@@ -38,11 +38,10 @@ struct InfoRequest {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::WARN)
+        .with_max_level(Level::INFO)
         .with_line_number(true)
         .finish();
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("setting default subscriber failed");
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
     tracing_log::LogTracer::init()?;
 
     info!("Initializing client...");
@@ -96,8 +95,9 @@ async fn main() -> anyhow::Result<()> {
                         sender.clone(),
                     )
                     .await
-                    .is_err() {
-                        continue;
+                    .is_err()
+                {
+                    continue;
                 }
             }
         }
