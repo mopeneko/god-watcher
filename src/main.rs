@@ -35,7 +35,7 @@ struct InfoRequest {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     env::set_var("RUST_LOG", "info");
     env_logger::init();
 
@@ -50,9 +50,8 @@ async fn main() {
     let info_payload = info_client
         .http_client
         .post("/info", serde_json::to_string(&req).unwrap())
-        .await
-        .unwrap();
-    let info: Info = serde_json::from_str(&info_payload).unwrap();
+        .await?;
+    let info: Info = serde_json::from_str(&info_payload)?;
     let addresses = info.relationship.data.child_addresses;
 
     info!("Subscribing user events...");
@@ -61,7 +60,7 @@ async fn main() {
     let mut subscribed_users: Vec<H160> = Vec::new();
     let mut subscription_ids: LinkedList<u32> = LinkedList::new();
     for address in addresses {
-        let user = H160::from_str(address.as_str()).unwrap();
+        let user = H160::from_str(address.as_str())?;
         let res = info_client
             .subscribe(Subscription::UserEvents { user }, sender.clone())
             .await;
@@ -95,7 +94,7 @@ async fn main() {
     });
 
     let client = reqwest::Client::new();
-    let discord_webhook_url = env::var("DISCORD_WEBHOOK_URL").unwrap();
+    let discord_webhook_url = env::var("DISCORD_WEBHOOK_URL")?;
 
     loop {
         match receiver.recv().await {
