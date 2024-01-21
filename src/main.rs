@@ -144,7 +144,7 @@ async fn main() -> anyhow::Result<()> {
                     let res = send_res.unwrap();
                     let status_code = res.status();
                     if res.error_for_status().is_err() {
-                        warn!("Unexpected status code: {status_code:?}")
+                        warn!("unexpected status code: {status_code:?}")
                     }
 
                     sleep(Duration::from_secs(5)).await;
