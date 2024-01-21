@@ -1,12 +1,14 @@
 use std::env;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use ethers::types::H160;
-use hyperliquid_rust_sdk::{BaseUrl, InfoClient, Message, Subscription};
+use hyperliquid_rust_sdk::{BaseUrl, InfoClient, Message, Subscription, TradeInfo};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::spawn;
+use tokio::sync::Mutex;
 use tokio::{sync::mpsc::unbounded_channel, time::sleep};
 use tracing::{info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -116,40 +118,59 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    let trades: Arc<Mutex<Vec<TradeInfo>>> = Arc::new(Mutex::new(Vec::new()));
+
     let client = reqwest::Client::new();
     let discord_webhook_url = env::var("DISCORD_WEBHOOK_URL")?;
 
+    let trades_arc_spawn = Arc::clone(&trades);
+    spawn(async move {
+        loop {
+            sleep(Duration::from_secs(1)).await;
+
+            let mut trades = trades_arc_spawn.lock().await;
+            let message = Vec::from_iter(trades.iter().map(|trade| {
+                let side = match trade.side.as_str() {
+                    "A" => "Long",
+                    "B" => "Short",
+                    _ => "Unknown",
+                };
+                format!("{} {} {}", side, trade.coin, trade.sz)
+            }))
+            .join("\n");
+
+            trades.clear();
+
+            if message.len() == 0 {
+                continue;
+            }
+
+            let send_res = client
+                .post(&discord_webhook_url)
+                .json(&json!({"content":message}))
+                .send()
+                .await;
+            if send_res.is_err() {
+                let err = send_res.err().unwrap();
+                warn!("failed to send to webhook: {err:?}");
+                continue;
+            }
+
+            let res = send_res.unwrap();
+            let status_code = res.status();
+            if res.error_for_status().is_err() {
+                warn!("unexpected status code: {status_code:?}")
+            }
+        }
+    });
+
+    let trades_arc = Arc::clone(&trades);
     loop {
         match receiver.recv().await {
-            Some(Message::User(user)) => {
-                for trade in user.data.fills {
-                    let side = match trade.side.as_str() {
-                        "A" => "Long",
-                        "B" => "Short",
-                        _ => "Unknown",
-                    };
-                    let message = format!("{} {} {}", side, trade.coin, trade.sz);
-
-                    let send_res = client
-                        .post(&discord_webhook_url)
-                        .json(&json!({"content":message}))
-                        .send()
-                        .await;
-                    if send_res.is_err() {
-                        let err = send_res.err().unwrap();
-                        warn!("failed to send to webhook: {err:?}");
-                        continue;
-                    }
-
-                    let res = send_res.unwrap();
-                    let status_code = res.status();
-                    if res.error_for_status().is_err() {
-                        warn!("unexpected status code: {status_code:?}")
-                    }
-
-                    sleep(Duration::from_secs(5)).await;
-                }
-            }
+            Some(Message::User(mut user)) => {
+                let mut trades = trades_arc.lock().await;
+                trades.append(&mut user.data.fills);
+            },
             _ => (),
         }
     }
