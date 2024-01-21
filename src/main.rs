@@ -92,11 +92,13 @@ async fn main() -> anyhow::Result<()> {
                     failed_subscription_ids.push(*subscription_id);
                     continue;
                 }
+
                 let get_user_opt = subscribed_users.get(i);
                 if get_user_opt.is_none() {
                     continue;
                 }
                 let user = get_user_opt.unwrap();
+
                 let subscribe_res = info_client
                     .subscribe(Subscription::UserEvents { user: *user }, sender.clone())
                     .await;
@@ -105,6 +107,7 @@ async fn main() -> anyhow::Result<()> {
                     failed_subscription_ids.push(*subscription_id);
                     continue;
                 }
+
                 new_subscription_ids.push(subscribe_res.unwrap())
             }
             new_subscription_ids.append(&mut failed_subscription_ids);
