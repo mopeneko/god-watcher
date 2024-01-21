@@ -1,11 +1,12 @@
-use std::{collections::LinkedList, time::Duration};
 use std::env;
 use std::str::FromStr;
+use std::{collections::LinkedList, time::Duration};
 
 use ethers::types::H160;
 use hyperliquid_rust_sdk::{BaseUrl, InfoClient, Message, Subscription};
-use log::{info, error};
+use log::{error, info};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tokio::spawn;
 use tokio::{sync::mpsc::unbounded_channel, time::sleep};
 
@@ -17,12 +18,12 @@ struct RelationshipData {
 
 #[derive(Deserialize, Clone, Debug)]
 struct Relationship {
-    data: RelationshipData
+    data: RelationshipData,
 }
 
 #[derive(Deserialize, Clone, Debug)]
 struct Info {
-    relationship: Relationship
+    relationship: Relationship,
 }
 
 #[derive(Serialize, Debug)]
@@ -42,17 +43,21 @@ async fn main() {
     let mut info_client = InfoClient::new(None, Some(BaseUrl::Mainnet)).await.unwrap();
 
     let vault_address = "0xdfc24b077bc1425ad1dea75bcb6f8158e10df303".to_string();
-    let req = InfoRequest{type_: "vaultDetails".to_string(), vault_address};
-    let info_payload = info_client.http_client.post(
-        "/info",
-        serde_json::to_string(&req).unwrap()
-    ).await.unwrap();
+    let req = InfoRequest {
+        type_: "vaultDetails".to_string(),
+        vault_address,
+    };
+    let info_payload = info_client
+        .http_client
+        .post("/info", serde_json::to_string(&req).unwrap())
+        .await
+        .unwrap();
     let info: Info = serde_json::from_str(&info_payload).unwrap();
     let addresses = info.relationship.data.child_addresses;
 
     info!("Subscribing user events...");
     let (sender, mut receiver) = unbounded_channel();
-    
+
     let mut subscribed_users: Vec<H160> = Vec::new();
     let mut subscription_ids: LinkedList<u32> = LinkedList::new();
     for address in addresses {
@@ -64,7 +69,7 @@ async fn main() {
             Ok(u32) => {
                 subscribed_users.push(user);
                 subscription_ids.push_back(u32);
-            },
+            }
             Err(e) => error!("Error on subscription: {e:?}"),
         }
     }
@@ -76,7 +81,15 @@ async fn main() {
             info!("Resubscribing...");
             for (i, subscription_id) in subscription_ids.iter().enumerate() {
                 info_client.unsubscribe(*subscription_id).await.unwrap();
-                info_client.subscribe(Subscription::UserEvents { user: *subscribed_users.get(i).unwrap() }, sender.clone()).await.unwrap();
+                info_client
+                    .subscribe(
+                        Subscription::UserEvents {
+                            user: *subscribed_users.get(i).unwrap(),
+                        },
+                        sender.clone(),
+                    )
+                    .await
+                    .unwrap();
             }
         }
     });
@@ -91,13 +104,12 @@ async fn main() {
                     let side = match trade.side.as_str() {
                         "A" => "Long",
                         "B" => "Short",
-                        _ => "Unknown"
+                        _ => "Unknown",
                     };
                     let message = format!("{} {} {}", side, trade.coin, trade.sz);
                     _ = client
                         .post(&discord_webhook_url)
-                        .header("Content-Type", "application/json")
-                        .body(format!("{{\"content\":\"{}\"}}", message))
+                        .json(&json!({"content":message}))
                         .send()
                         .await
                         .unwrap()
@@ -106,7 +118,7 @@ async fn main() {
 
                     sleep(Duration::from_secs(5)).await;
                 }
-            },
+            }
             _ => (),
         }
     }
