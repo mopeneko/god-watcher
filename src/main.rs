@@ -4,11 +4,12 @@ use std::{collections::LinkedList, time::Duration};
 
 use ethers::types::H160;
 use hyperliquid_rust_sdk::{BaseUrl, InfoClient, Message, Subscription};
-use log::{error, info};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::spawn;
 use tokio::{sync::mpsc::unbounded_channel, time::sleep};
+use tracing::{info, warn, Level};
+use tracing_subscriber::FmtSubscriber;
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -36,8 +37,13 @@ struct InfoRequest {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    env::set_var("RUST_LOG", "info");
-    env_logger::init();
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::WARN)
+        .with_line_number(true)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("setting default subscriber failed");
+    tracing_log::LogTracer::init()?;
 
     info!("Initializing client...");
     let mut info_client = InfoClient::new(None, Some(BaseUrl::Mainnet)).await?;
@@ -69,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
                 subscribed_users.push(user);
                 subscription_ids.push_back(u32);
             }
-            Err(e) => error!("Error on subscription: {e:?}"),
+            Err(e) => warn!("failed to subscribe: {e:?}"),
         }
     }
 
