@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     info!("Initializing client...");
-    let mut info_client = InfoClient::new(None, Some(BaseUrl::Mainnet)).await.unwrap();
+    let mut info_client = InfoClient::new(None, Some(BaseUrl::Mainnet)).await?;
 
     let vault_address = "0xdfc24b077bc1425ad1dea75bcb6f8158e10df303".to_string();
     let req = InfoRequest {
@@ -49,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
     };
     let info_payload = info_client
         .http_client
-        .post("/info", serde_json::to_string(&req).unwrap())
+        .post("/info", serde_json::to_string(&req)?)
         .await?;
     let info: Info = serde_json::from_str(&info_payload)?;
     let addresses = info.relationship.data.child_addresses;
@@ -110,10 +110,8 @@ async fn main() -> anyhow::Result<()> {
                         .post(&discord_webhook_url)
                         .json(&json!({"content":message}))
                         .send()
-                        .await
-                        .unwrap()
-                        .error_for_status()
-                        .unwrap();
+                        .await?
+                        .error_for_status()?;
 
                     sleep(Duration::from_secs(5)).await;
                 }
