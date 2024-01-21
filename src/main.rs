@@ -85,8 +85,10 @@ async fn main() -> anyhow::Result<()> {
 
             info!("Resubscribing...");
             for (i, subscription_id) in subscription_ids.iter().enumerate() {
-                info_client.unsubscribe(*subscription_id).await.unwrap();
-                info_client
+                if info_client.unsubscribe(*subscription_id).await.is_err() {
+                    continue;
+                }
+                if info_client
                     .subscribe(
                         Subscription::UserEvents {
                             user: *subscribed_users.get(i).unwrap(),
@@ -94,7 +96,9 @@ async fn main() -> anyhow::Result<()> {
                         sender.clone(),
                     )
                     .await
-                    .unwrap();
+                    .is_err() {
+                        continue;
+                }
             }
         }
     });
