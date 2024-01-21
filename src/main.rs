@@ -129,12 +129,23 @@ async fn main() -> anyhow::Result<()> {
                         _ => "Unknown",
                     };
                     let message = format!("{} {} {}", side, trade.coin, trade.sz);
-                    _ = client
+
+                    let send_res = client
                         .post(&discord_webhook_url)
                         .json(&json!({"content":message}))
                         .send()
-                        .await?
-                        .error_for_status()?;
+                        .await;
+                    if send_res.is_err() {
+                        let err = send_res.err().unwrap();
+                        warn!("failed to send to webhook: {err:?}");
+                        continue;
+                    }
+
+                    let res = send_res.unwrap();
+                    let status_code = res.status();
+                    if res.error_for_status().is_err() {
+                        warn!("Unexpected status code: {status_code:?}")
+                    }
 
                     sleep(Duration::from_secs(5)).await;
                 }
