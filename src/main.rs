@@ -127,7 +127,7 @@ async fn main() -> anyhow::Result<()> {
     let trades_arc_spawn = Arc::clone(&trades);
     spawn(async move {
         loop {
-            sleep(Duration::from_secs(1)).await;
+            sleep(Duration::from_secs(5)).await;
 
             let mut trades = trades_arc_spawn.lock().await;
             let message = Vec::from_iter(trades.iter().map(|trade| {
