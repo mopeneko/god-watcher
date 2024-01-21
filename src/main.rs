@@ -90,22 +90,20 @@ async fn main() -> anyhow::Result<()> {
             let mut new_subscription_ids: Vec<u32> = Vec::new();
             for (i, subscription_id) in subscription_ids.iter().enumerate() {
                 match info_client.unsubscribe(*subscription_id).await {
-                    Ok(()) => {
-                        match subscribed_users.get(i) {
-                            Some(user) => {
-                                let subscribe_res = info_client
-                                    .subscribe(Subscription::UserEvents { user: *user }, sender.clone())
-                                    .await;
-                                if subscribe_res.is_err() {
-                                    warn!("failed to subscribe {subscription_id:?}");
-                                    failed_subscription_ids.push(*subscription_id);
-                                    continue;
-                                }
+                    Ok(()) => match subscribed_users.get(i) {
+                        Some(user) => {
+                            let subscribe_res = info_client
+                                .subscribe(Subscription::UserEvents { user: *user }, sender.clone())
+                                .await;
+                            if subscribe_res.is_err() {
+                                warn!("failed to subscribe {subscription_id:?}");
+                                failed_subscription_ids.push(*subscription_id);
+                                continue;
+                            }
 
-                                new_subscription_ids.push(subscribe_res.unwrap())
-                            },
-                            None => continue,
+                            new_subscription_ids.push(subscribe_res.unwrap())
                         }
+                        None => continue,
                     },
                     Err(err) => {
                         warn!("failed to unsubscribe {subscription_id:?}: {err:?}");
@@ -159,7 +157,7 @@ async fn main() -> anyhow::Result<()> {
                     if res.error_for_status().is_err() {
                         warn!("unexpected status code: {status_code:?}")
                     }
-                },
+                }
                 Err(err) => {
                     warn!("failed to send to webhook: {err:?}");
                     continue;
@@ -174,7 +172,7 @@ async fn main() -> anyhow::Result<()> {
             Some(Message::User(mut user)) => {
                 let mut trades = trades_arc.lock().await;
                 trades.append(&mut user.data.fills);
-            },
+            }
             _ => (),
         }
     }
